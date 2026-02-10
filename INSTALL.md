@@ -25,9 +25,9 @@ To speed up the install process, run this code to do it for you:
 ```bash
 mkdir hypros_install
 cd hypros_install
-curl https://raw.githubusercontent.com/7aimez/hypros/refs/heads/main/install/auto.sh
+curl -O https://raw.githubusercontent.com/7aimez/hypros/refs/heads/main/install/auto.sh
 cd ..
-bash hypros_install/auto.sh
+source hypros_install/auto.sh
 rmdir hypros_install
 cd hypros
 ```
