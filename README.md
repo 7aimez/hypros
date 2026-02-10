@@ -6,7 +6,7 @@
 
 ## Example
 
-<img width="960" height="550" alt="image" src="https://github.com/user-attachments/assets/97759b0b-f649-4bd2-bf0c-851f08fff82e" />
+[<img width="960" height="550" alt="image" src="https://github.com/user-attachments/assets/97759b0b-f649-4bd2-bf0c-851f08fff82e" />](screenshots/example.md)
 
 
 ## What is HyprOS
