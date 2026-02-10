@@ -33,6 +33,9 @@ HyprOs contains the following features:
 - Status bar
 - Power options
 
+> [!NOTE]
+> If there are any bugs with any of these features or in the main software itself, please [create an issue](https://github.com/7aimez/hypros/issues/new/choose).
+
 ## Technologies
 
 Used to create HyperOs and needed installed and enabled to run it:
