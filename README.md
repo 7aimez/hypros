@@ -43,6 +43,7 @@ Used to create HyperOs and needed installed and enabled to run it:
 - HTML + CSS
 - JavaScript
 - JSON
+- blob
 
 Not needed but recommended:
 
