@@ -12,7 +12,11 @@
 
 ## What is HyprOS
 
-HyprOs is a HTML/web recreation of [hyprland shell](https://hypr.land). It is a modern desktop-like enviroment, with basic tools and features (see next section for more). 
+HyprOs is a HTML/web recreation of [hyprland shell](https://hypr.land). It is a modern desktop-like enviroment, with basic tools and features (see features section for more).
+
+## Installation
+
+[Read this](INSTALL.md) to find out how to install HyperOS.
 
 
 ## Features
