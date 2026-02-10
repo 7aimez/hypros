@@ -1,6 +1,7 @@
-# HyprOS
-
-**HTML recreation of hyprland shell**
+<div align="center">
+  <h1>HyprOS</h1>
+  <b>HTML recreation of hyprland shell</b>
+</div>
 
 ---
 
