@@ -58,3 +58,10 @@ Not needed but recommended:
 ## License
 
 HyprOS in under the [MIT License](LICENSE).
+
+
+<br />
+
+---
+
+<b>By 7ames</b>
