@@ -312,6 +312,11 @@
             padding: 2px 4px;
             border-radius: 3px;
         }
+
+        .code-editor {
+            font-family: 'JetBrains Mono', monospace;
+            line-height: 1.5;
+        }
     </style>
     <base target="_blank">
 </head>
@@ -467,6 +472,12 @@
                 <button onclick="openApp('paint')" class="p-2 rounded-xl hover:bg-white/10 transition-all hover:scale-110 hover:-translate-y-1">
                     <i class="fas fa-paint-brush text-2xl text-purple-400"></i>
                 </button>
+                <button onclick="openApp('taskmanager')" class="p-2 rounded-xl hover:bg-white/10 transition-all hover:scale-110 hover:-translate-y-1">
+                    <i class="fas fa-tasks text-2xl text-red-400"></i>
+                </button>
+                <button onclick="openApp('appcreator')" class="p-2 rounded-xl hover:bg-white/10 transition-all hover:scale-110 hover:-translate-y-1">
+                    <i class="fas fa-plus-circle text-2xl text-green-500"></i>
+                </button>
                 <div class="w-px h-6 bg-white/10 mx-1"></div>
                 <button onclick="toggleSettings()" class="p-2 rounded-xl hover:bg-white/10 transition-all hover:scale-110 hover:rotate-90">
                     <i class="fas fa-cog text-xl text-hypr-muted"></i>
@@ -513,6 +524,19 @@
                     </button>
                 </div>
                 <input type="file" id="ql-import-input" class="hidden" accept=".json" onchange="handleQLImport(this)">
+            </section>
+
+            <section class="space-y-3">
+                <h3 class="text-xs font-bold text-hypr-muted uppercase tracking-wider">Custom Apps</h3>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="exportCustomApps()" class="p-2 bg-hypr-surface/50 rounded-lg hover:bg-hypr-accent3/20 transition-colors text-xs flex items-center justify-center gap-2">
+                        <i class="fas fa-download"></i> Export Apps
+                    </button>
+                    <button onclick="importCustomApps()" class="p-2 bg-hypr-surface/50 rounded-lg hover:bg-hypr-accent3/20 transition-colors text-xs flex items-center justify-center gap-2">
+                        <i class="fas fa-upload"></i> Import Apps
+                    </button>
+                </div>
+                <input type="file" id="ca-import-input" class="hidden" accept=".json" onchange="handleCAImport(this)">
             </section>
 
             <section class="space-y-3">
@@ -617,6 +641,8 @@
             { name: 'Reddit', url: 'https://reddit.com', icon: 'fa-reddit', color: 'text-orange-400' }
         ];
 
+        let customApps = [];
+
         let desktopIcons = [
             { id: 'home', name: 'Home', icon: 'fa-folder', color: 'text-yellow-400', x: 20, y: 20, path: ['Home'] },
             { id: 'docs', name: 'Documents', icon: 'fa-file-alt', color: 'text-blue-400', x: 20, y: 120, path: ['Home', 'Documents'] },
@@ -634,7 +660,7 @@
             clipboard: null
         };
 
-        const apps = [
+        const defaultApps = [
             { id: 'terminal', name: 'Terminal', icon: 'fa-terminal', color: 'text-green-400' },
             { id: 'files', name: 'Files', icon: 'fa-folder', color: 'text-yellow-400' },
             { id: 'browser', name: 'Browser', icon: 'fa-firefox', color: 'text-orange-500' },
@@ -643,7 +669,11 @@
             { id: 'calculator', name: 'Calculator', icon: 'fa-calculator', color: 'text-cyan-400' },
             { id: 'paint', name: 'Paint', icon: 'fa-paint-brush', color: 'text-purple-400' },
             { id: 'settings', name: 'Settings', icon: 'fa-cog', color: 'text-hypr-accent' },
+            { id: 'taskmanager', name: 'Task Manager', icon: 'fa-tasks', color: 'text-red-400' },
+            { id: 'appcreator', name: 'App Creator', icon: 'fa-plus-circle', color: 'text-green-500' },
         ];
+
+        let apps = [...defaultApps];
 
         const recentFiles = [
             { name: 'project.py', icon: 'fa-file-code', color: 'text-blue-400', path: '~/dev' },
@@ -673,6 +703,7 @@
         // Initialize
         function init() {
             loadState();
+            updateAppsList();
             renderDesktopIcons();
             renderApps();
             renderQuickLinks();
@@ -682,6 +713,17 @@
             setupSearchBar();
         }
 
+        function updateAppsList() {
+            apps = [...defaultApps, ...customApps.map((app, idx) => ({
+                id: `custom_${idx}`,
+                name: app.name,
+                icon: app.icon,
+                color: app.color,
+                isCustom: true,
+                customIndex: idx
+            }))];
+        }
+
         function setupSearchBar() {
             els.globalSearch.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
@@ -689,15 +731,12 @@
                     const query = els.globalSearch.value.trim();
                     if (!query) return;
                     
-                    // Check if it's a URL
                     if (query.includes('.') && !query.includes(' ')) {
-                        // Looks like a URL
                         let url = query;
                         if (!url.startsWith('http')) {
                             url = 'https://' + url;
                         }
                         openApp('browser');
-                        // Set the URL in the browser after it opens
                         setTimeout(() => {
                             const browserWin = state.windows.find(w => w.app.id === 'browser');
                             if (browserWin) {
@@ -710,7 +749,6 @@
                             }
                         }, 100);
                     } else {
-                        // Search query
                         searchWeb();
                     }
                     els.globalSearch.value = '';
@@ -725,12 +763,16 @@
                 fileSystem = data.fileSystem || fileSystem;
                 quickLinks = data.quickLinks || quickLinks;
                 desktopIcons = data.desktopIcons || desktopIcons;
+                customApps = data.customApps || [];
                 state.wallpaper = data.wallpaper || state.wallpaper;
                 state.volume = data.volume || 75;
                 state.glow = data.glow !== undefined ? data.glow : true;
                 
+                updateAppsList();
                 els.wallpaper.style.backgroundImage = `url('${state.wallpaper}')`;
             }
+            loadMusicFromFS();
+            loadPicturesFromFS();
         }
 
         function saveState() {
@@ -738,10 +780,27 @@
                 fileSystem,
                 quickLinks,
                 desktopIcons,
+                customApps,
                 wallpaper: state.wallpaper,
                 volume: state.volume,
                 glow: state.glow
             }));
+        }
+
+        function loadMusicFromFS() {
+            const musicFolder = getFolder(['Home', 'Music']);
+            if (musicFolder && musicFolder.children) {
+                state.musicFiles = Object.entries(musicFolder.children).map(([name, item]) => ({
+                    name: name.replace(/\.[^/.]+$/, ""),
+                    artist: "Unknown",
+                    url: item.content,
+                    file: { name: name }
+                }));
+            }
+        }
+
+        function loadPicturesFromFS() {
+            // Pictures are loaded on demand when paint app opens
         }
 
         // Desktop Icons - FIXED
@@ -759,13 +818,11 @@
                     <span class="desktop-icon-name">${icon.name}</span>
                 `;
                 
-                // Mouse events
                 iconEl.addEventListener('mousedown', (e) => handleIconMouseDown(e, icon.id));
                 iconEl.addEventListener('click', (e) => handleIconClick(e, icon.id));
                 iconEl.addEventListener('dblclick', (e) => handleIconDoubleClick(e, icon.id));
                 iconEl.addEventListener('contextmenu', (e) => showIconContextMenu(e, icon.id));
                 
-                // Touch events
                 iconEl.addEventListener('touchstart', (e) => handleIconTouchStart(e, icon.id), { passive: false });
                 iconEl.addEventListener('touchmove', (e) => handleIconTouchMove(e, icon.id), { passive: false });
                 iconEl.addEventListener('touchend', (e) => handleIconTouchEnd(e, icon.id));
@@ -780,7 +837,7 @@
         let iconTouchMoved = false;
 
         function handleIconMouseDown(e, iconId) {
-            if (e.button !== 0) return; // Only left click
+            if (e.button !== 0) return;
             e.stopPropagation();
             
             const icon = desktopIcons.find(i => i.id === iconId);
@@ -816,7 +873,6 @@
             document.removeEventListener('mouseup', handleIconMouseUp);
         }
 
-        // Touch handling for icons
         function handleIconTouchStart(e, iconId) {
             e.stopPropagation();
             iconTouchStartTime = Date.now();
@@ -848,7 +904,6 @@
             if (draggedIconId) {
                 const touchDuration = Date.now() - iconTouchStartTime;
                 
-                // If it was a tap (not drag), treat as click
                 if (!iconTouchMoved && touchDuration < 300) {
                     handleIconDoubleClick(e, draggedIconId);
                 }
@@ -859,7 +914,6 @@
         }
 
         function handleIconClick(e, iconId) {
-            // Single click just selects
             document.querySelectorAll('.desktop-icon').forEach(el => el.classList.remove('selected'));
             document.getElementById(`desktop-icon-${iconId}`).classList.add('selected');
         }
@@ -1034,6 +1088,35 @@
             }
         }
 
+        function exportCustomApps() {
+            const data = JSON.stringify(customApps, null, 2);
+            downloadFile('customapps.json', data, 'application/json');
+            showNotification('Export', 'Custom apps exported', 'fa-download');
+        }
+
+        function importCustomApps() {
+            document.getElementById('ca-import-input').click();
+        }
+
+        function handleCAImport(input) {
+            const file = input.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        customApps = JSON.parse(e.target.result);
+                        updateAppsList();
+                        renderApps();
+                        saveState();
+                        showNotification('Import', 'Custom apps imported successfully', 'fa-check');
+                    } catch (err) {
+                        showNotification('Error', 'Invalid custom apps format', 'fa-exclamation');
+                    }
+                };
+                reader.readAsText(file);
+            }
+        }
+
         function downloadFile(filename, content, type) {
             const blob = new Blob([content], { type });
             const url = URL.createObjectURL(blob);
@@ -1114,7 +1197,22 @@
         }
 
         function openApp(appId, path = null) {
-            const app = apps.find(a => a.id === appId) || { id: appId, name: appId, icon: 'fa-window-maximize', color: 'text-hypr-text' };
+            let app;
+            if (appId.startsWith('custom_')) {
+                const idx = parseInt(appId.split('_')[1]);
+                const customApp = customApps[idx];
+                app = { 
+                    id: appId, 
+                    name: customApp.name, 
+                    icon: customApp.icon, 
+                    color: customApp.color,
+                    isCustom: true,
+                    customIndex: idx
+                };
+            } else {
+                app = apps.find(a => a.id === appId) || { id: appId, name: appId, icon: 'fa-window-maximize', color: 'text-hypr-text' };
+            }
+            
             const windowId = 'win-' + Date.now();
             const pos = getRandomPosition();
             
@@ -1127,7 +1225,7 @@
             windowEl.style.top = pos.y + 'px';
             if (state.glow) windowEl.classList.add('active-glow');
 
-            let content = generateAppContent(appId, windowId, path);
+            let content = generateAppContent(appId, windowId, path, app);
 
             windowEl.innerHTML = `
                 <div class="h-10 border-b border-white/10 flex items-center justify-between px-3 bg-white/5 rounded-t-xl touch-none" 
@@ -1152,9 +1250,14 @@
             state.windows.push({ id: windowId, element: windowEl, app, path });
             focusWindow(windowId);
             showNotification('Launched', `${app.name} is now running`, app.icon, app.color);
+
+            // Initialize custom app if needed
+            if (app.isCustom) {
+                setTimeout(() => initCustomApp(windowId, app.customIndex), 100);
+            }
         }
 
-        function generateAppContent(appId, windowId, path) {
+        function generateAppContent(appId, windowId, path, app) {
             switch(appId) {
                 case 'terminal':
                     return `
@@ -1182,7 +1285,7 @@
                         <div class="flex h-full text-sm">
                             <div class="w-48 border-r border-white/10 p-2 space-y-1 overflow-auto bg-hypr-surface/30">
                                 <div class="text-xs font-bold text-hypr-muted uppercase mb-2 p-2">Locations</div>
-                                <div class="file-item selected" onclick="navigateTo('${windowId}', ['Home'])">
+                                <div class="file-item ${initialPath.length === 1 && initialPath[0] === 'Home' ? 'selected' : ''}" onclick="navigateTo('${windowId}', ['Home'])">
                                     <i class="fas fa-home text-hypr-accent"></i> Home
                                 </div>
                                 <div class="file-item" onclick="navigateTo('${windowId}', ['Home', 'Documents'])">
@@ -1357,15 +1460,193 @@
                                 <button onclick="saveCanvas('${windowId}')" class="px-3 py-1 bg-hypr-accent/20 text-hypr-accent rounded hover:bg-hypr-accent/30 text-sm">
                                     <i class="fas fa-download mr-1"></i> Save
                                 </button>
+                                <button onclick="saveCanvasToFS('${windowId}')" class="px-3 py-1 bg-hypr-success/20 text-hypr-success rounded hover:bg-hypr-success/30 text-sm">
+                                    <i class="fas fa-save mr-1"></i> Save to Files
+                                </button>
                             </div>
                             <div class="flex-1 relative overflow-hidden bg-white">
                                 <canvas id="canvas-${windowId}" class="absolute inset-0 cursor-crosshair touch-none"></canvas>
                             </div>
                         </div>`;
                 
+                case 'taskmanager':
+                    return `
+                        <div class="flex flex-col h-full">
+                            <div class="h-10 border-b border-white/10 flex items-center justify-between px-4 bg-white/5">
+                                <span class="text-sm font-bold">Task Manager</span>
+                                <button onclick="refreshTaskManager('${windowId}')" class="text-xs bg-hypr-accent/20 text-hypr-accent px-3 py-1 rounded hover:bg-hypr-accent/30">
+                                    <i class="fas fa-refresh mr-1"></i> Refresh
+                                </button>
+                            </div>
+                            <div class="flex-1 overflow-auto p-4" id="task-list-${windowId}">
+                                ${renderTaskList()}
+                            </div>
+                        </div>`;
+                
+                case 'appcreator':
+                    return `
+                        <div class="flex flex-col h-full">
+                            <div class="h-10 border-b border-white/10 flex items-center justify-between px-4 bg-white/5">
+                                <span class="text-sm font-bold">App Creator</span>
+                                <div class="flex gap-2">
+                                    <button onclick="saveCustomApp()" class="text-xs bg-hypr-success/20 text-hypr-success px-3 py-1 rounded hover:bg-hypr-success/30">
+                                        <i class="fas fa-save mr-1"></i> Save App
+                                    </button>
+                                    <button onclick="testCustomApp()" class="text-xs bg-hypr-accent/20 text-hypr-accent px-3 py-1 rounded hover:bg-hypr-accent/30">
+                                        <i class="fas fa-play mr-1"></i> Test
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="flex-1 overflow-auto p-4 space-y-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="text-xs text-hypr-muted block mb-1">App Name</label>
+                                        <input type="text" id="ca-name" class="w-full bg-hypr-surface border border-hypr-border rounded-lg px-3 py-2 text-sm focus:border-hypr-accent outline-none" placeholder="My App">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-hypr-muted block mb-1">Icon Class (fa-*)</label>
+                                        <input type="text" id="ca-icon" class="w-full bg-hypr-surface border border-hypr-border rounded-lg px-3 py-2 text-sm focus:border-hypr-accent outline-none" placeholder="fa-rocket">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-xs text-hypr-muted block mb-1">Icon Color</label>
+                                    <select id="ca-color" class="w-full bg-hypr-surface border border-hypr-border rounded-lg px-3 py-2 text-sm focus:border-hypr-accent outline-none">
+                                        <option value="text-red-400">Red</option>
+                                        <option value="text-orange-400">Orange</option>
+                                        <option value="text-yellow-400">Yellow</option>
+                                        <option value="text-green-400">Green</option>
+                                        <option value="text-cyan-400">Cyan</option>
+                                        <option value="text-blue-400">Blue</option>
+                                        <option value="text-purple-400">Purple</option>
+                                        <option value="text-pink-400">Pink</option>
+                                        <option value="text-hypr-accent" selected>Accent</option>
+                                        <option value="text-white">White</option>
+                                    </select>
+                                </div>
+                                <div class="flex-1 flex flex-col">
+                                    <label class="text-xs text-hypr-muted block mb-1">HTML Content</label>
+                                    <textarea id="ca-html" class="flex-1 bg-hypr-surface border border-hypr-border rounded-lg px-3 py-2 text-sm focus:border-hypr-accent outline-none font-mono text-xs" placeholder="<div>Your HTML here</div>"></textarea>
+                                </div>
+                                <div class="flex-1 flex flex-col">
+                                    <label class="text-xs text-hypr-muted block mb-1">CSS Styles</label>
+                                    <textarea id="ca-css" class="flex-1 bg-hypr-surface border border-hypr-border rounded-lg px-3 py-2 text-sm focus:border-hypr-accent outline-none font-mono text-xs" placeholder=".my-class { color: red; }"></textarea>
+                                </div>
+                                <div class="flex-1 flex flex-col">
+                                    <label class="text-xs text-hypr-muted block mb-1">JavaScript</label>
+                                    <textarea id="ca-js" class="flex-1 bg-hypr-surface border border-hypr-border rounded-lg px-3 py-2 text-sm focus:border-hypr-accent outline-none font-mono text-xs" placeholder="// Your JS here"></textarea>
+                                </div>
+                            </div>
+                        </div>`;
+                
                 default:
+                    if (app && app.isCustom) {
+                        return `<div id="custom-app-${windowId}" class="h-full w-full overflow-auto bg-hypr-bg/50"></div>`;
+                    }
                     return `<div class="p-8 text-center"><i class="fas fa-cube text-6xl text-hypr-muted mb-4"></i><p>Application "${appId}"</p></div>`;
             }
+        }
+
+        // Custom App Functions
+        function initCustomApp(windowId, customIndex) {
+            const app = customApps[customIndex];
+            if (!app) return;
+            
+            const container = document.getElementById(`custom-app-${windowId}`);
+            if (!container) return;
+            
+            // Create shadow DOM to isolate styles
+            const shadow = container.attachShadow({ mode: 'open' });
+            
+            // Add CSS
+            if (app.css) {
+                const style = document.createElement('style');
+                style.textContent = app.css;
+                shadow.appendChild(style);
+            }
+            
+            // Add HTML
+            if (app.html) {
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = app.html;
+                shadow.appendChild(wrapper);
+            }
+            
+            // Add JS
+            if (app.js) {
+                const script = document.createElement('script');
+                script.textContent = `
+                    (function() {
+                        ${app.js}
+                    })();
+                `;
+                shadow.appendChild(script);
+            }
+        }
+
+        function saveCustomApp() {
+            const name = document.getElementById('ca-name').value.trim();
+            const icon = document.getElementById('ca-icon').value.trim() || 'fa-rocket';
+            const color = document.getElementById('ca-color').value;
+            const html = document.getElementById('ca-html').value;
+            const css = document.getElementById('ca-css').value;
+            const js = document.getElementById('ca-js').value;
+            
+            if (!name) {
+                showNotification('Error', 'App name is required', 'fa-exclamation');
+                return;
+            }
+            
+            customApps.push({ name, icon, color, html, css, js });
+            updateAppsList();
+            renderApps();
+            saveState();
+            showNotification('App Creator', `App "${name}" saved!`, 'fa-check');
+        }
+
+        function testCustomApp() {
+            const html = document.getElementById('ca-html').value;
+            const css = document.getElementById('ca-css').value;
+            const js = document.getElementById('ca-js').value;
+            
+            const testApp = {
+                name: 'Test App',
+                icon: 'fa-flask',
+                color: 'text-yellow-400',
+                html, css, js
+            };
+            
+            const tempIdx = customApps.length;
+            customApps.push(testApp);
+            updateAppsList();
+            openApp(`custom_${tempIdx}`);
+            customApps.pop(); // Remove test app from list
+            updateAppsList();
+        }
+
+        // Task Manager Functions
+        function renderTaskList() {
+            if (state.windows.length === 0) {
+                return '<div class="text-hypr-muted text-center mt-8">No running tasks</div>';
+            }
+            
+            return state.windows.map(w => `
+                <div class="flex items-center justify-between p-3 rounded-lg bg-hypr-surface/30 hover:bg-hypr-surface/50 mb-2">
+                    <div class="flex items-center gap-3">
+                        <i class="fas ${w.app.icon} ${w.app.color}"></i>
+                        <div>
+                            <div class="text-sm font-bold">${w.app.name}</div>
+                            <div class="text-xs text-hypr-muted">ID: ${w.id}</div>
+                        </div>
+                    </div>
+                    <button onclick="closeWindow('${w.id}')" class="px-3 py-1 bg-hypr-error/20 text-hypr-error rounded hover:bg-hypr-error/30 text-xs">
+                        <i class="fas fa-times mr-1"></i> End Task
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function refreshTaskManager(windowId) {
+            document.getElementById(`task-list-${windowId}`).innerHTML = renderTaskList();
         }
 
         // File Manager Functions
@@ -1394,11 +1675,13 @@
             if (filename.endsWith('.txt') || filename.endsWith('.md')) return 'fa-file-alt text-gray-400';
             if (filename.endsWith('.js') || filename.endsWith('.py') || filename.endsWith('.html')) return 'fa-file-code text-blue-400';
             if (filename.endsWith('.json')) return 'fa-file-code text-yellow-400';
-            if (filename.endsWith('.png') || filename.endsWith('.jpg')) return 'fa-image text-purple-400';
+            if (filename.endsWith('.png') || filename.endsWith('.jpg') || filename.endsWith('.jpeg')) return 'fa-image text-purple-400';
+            if (filename.endsWith('.mp3') || filename.endsWith('.wav') || filename.endsWith('.ogg')) return 'fa-music text-pink-400';
             return 'fa-file text-gray-400';
         }
 
         function formatFileSize(content) {
+            if (typeof content !== 'string') return 'Unknown';
             const bytes = new Blob([content]).size;
             if (bytes < 1024) return bytes + ' B';
             if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -1615,7 +1898,7 @@
                     const outLine = document.createElement('div');
                     outLine.className = 'text-hypr-text mb-2 whitespace-pre-wrap';
                     outLine.textContent = output;
-                    term.insertBefore(outLine, term.lastElementLast);
+                    term.insertBefore(outLine, term.lastElementChild);
                 }
                 
                 input.value = '';
@@ -1783,15 +2066,26 @@ Memory: ${navigator.deviceMemory || '?'} GB`;
         function handleMusicUpload(input, windowId) {
             const files = Array.from(input.files);
             files.forEach(file => {
-                const url = URL.createObjectURL(file);
-                state.musicFiles.push({
-                    name: file.name.replace(/\.[^/.]+$/, ""),
-                    artist: "Unknown",
-                    url: url,
-                    file: file
-                });
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const base64data = e.target.result;
+                    const filename = file.name;
+                    
+                    // Save to file system
+                    createFile(['Home', 'Music'], filename, base64data);
+                    
+                    // Add to music files
+                    state.musicFiles.push({
+                        name: file.name.replace(/\.[^/.]+$/, ""),
+                        artist: "Unknown",
+                        url: base64data,
+                        file: file
+                    });
+                    
+                    updatePlaylist(windowId);
+                };
+                reader.readAsDataURL(file);
             });
-            updatePlaylist(windowId);
             showNotification('Music', `Added ${files.length} tracks`, 'fa-music');
         }
 
@@ -1957,13 +2251,11 @@ Memory: ${navigator.deviceMemory || '?'} GB`;
             
             canvasStates[windowId] = { canvas, ctx, drawing: false };
             
-            // Mouse events
             canvas.addEventListener('mousedown', (e) => startPaint(e, windowId));
             canvas.addEventListener('mousemove', (e) => paint(e, windowId));
             canvas.addEventListener('mouseup', () => stopPaint(windowId));
             canvas.addEventListener('mouseout', () => stopPaint(windowId));
             
-            // Touch events
             canvas.addEventListener('touchstart', (e) => {
                 e.preventDefault();
                 const touch = e.touches[0];
@@ -2038,6 +2330,16 @@ Memory: ${navigator.deviceMemory || '?'} GB`;
             }
         }
 
+        function saveCanvasToFS(windowId) {
+            const state = canvasStates[windowId];
+            if (state) {
+                const dataUrl = state.canvas.toDataURL();
+                const filename = 'drawing_' + Date.now() + '.png';
+                createFile(['Home', 'Pictures'], filename, dataUrl);
+                showNotification('Paint', `Saved to Pictures/${filename}`, 'fa-save');
+            }
+        }
+
         // Window Management with Touch Support
         function closeWindow(id) {
             const win = state.windows.find(w => w.id === id);
@@ -2056,6 +2358,12 @@ Memory: ${navigator.deviceMemory || '?'} GB`;
                     if (state.windows.length === 0) {
                         els.activeWindowIndicator.classList.add('opacity-0');
                     }
+                    // Refresh task manager if open
+                    state.windows.forEach(w => {
+                        if (w.app.id === 'taskmanager') {
+                            refreshTaskManager(w.id);
+                        }
+                    });
                 }, 200);
             }
         }
@@ -2182,7 +2490,6 @@ Memory: ${navigator.deviceMemory || '?'} GB`;
             const query = els.globalSearch.value.toLowerCase().trim();
             if (!query) return;
             
-            // Search in file system
             const results = [];
             function searchFolder(folder, path) {
                 for (const [name, item] of Object.entries(folder.children || {})) {
@@ -2198,7 +2505,6 @@ Memory: ${navigator.deviceMemory || '?'} GB`;
             
             if (results.length > 0) {
                 showNotification('Search', `Found ${results.length} result(s)`, 'fa-search');
-                // Open first result
                 if (results[0].type === 'file') {
                     openApp('files', results[0].path.slice(0, -1));
                 }
@@ -2298,11 +2604,13 @@ Memory: ${navigator.deviceMemory || '?'} GB`;
                 btn.classList.add('bg-hypr-accent');
                 btn.classList.remove('bg-gray-600');
                 knob.style.right = '4px';
+                knob.style.left = 'auto';
                 state.windows.forEach(w => w.element.classList.add('active-glow'));
             } else {
                 btn.classList.remove('bg-hypr-accent');
                 btn.classList.add('bg-gray-600');
                 knob.style.left = '4px';
+                knob.style.right = 'auto';
                 state.windows.forEach(w => w.element.classList.remove('active-glow'));
             }
             saveState();
@@ -2369,18 +2677,15 @@ Memory: ${navigator.deviceMemory || '?'} GB`;
 
         // Global Events
         function setupGlobalEvents() {
-            // Window dragging
             document.addEventListener('mousemove', handleDragMove);
             document.addEventListener('mouseup', handleDragEnd);
             document.addEventListener('touchmove', handleDragMove, { passive: false });
             document.addEventListener('touchend', handleDragEnd);
             
-            // Context menu hide
             document.addEventListener('click', (e) => {
                 if (!e.target.closest('.context-menu')) hideContextMenu();
             });
             
-            // Keyboard shortcuts
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') {
                     hideContextMenu();
@@ -2388,13 +2693,12 @@ Memory: ${navigator.deviceMemory || '?'} GB`;
                     else if (els.launcher.style.display !== 'none') toggleLauncher();
                     else if (!els.settingsWindow.classList.contains('hidden')) toggleSettings();
                 }
-                if (e.key === 'Meta' || e.key === 'Super') {
+                if (e.altKey && e.key === ' ') {
                     e.preventDefault();
                     toggleLauncher();
                 }
             });
             
-            // Initialize paint when windows are created
             const observer = new MutationObserver((mutations) => {
                 mutations.forEach((mutation) => {
                     mutation.addedNodes.forEach((node) => {
@@ -2404,6 +2708,9 @@ Memory: ${navigator.deviceMemory || '?'} GB`;
                                 if (document.getElementById(`canvas-${windowId}`)) {
                                     initPaint(windowId);
                                 }
+                                if (document.getElementById(`playlist-${windowId}`)) {
+                                    updatePlaylist(windowId);
+                                }
                             }, 100);
                         }
                     });
@@ -2411,7 +2718,6 @@ Memory: ${navigator.deviceMemory || '?'} GB`;
             });
             observer.observe(els.windowsContainer, { childList: true });
             
-            // Desktop background click to deselect
             document.getElementById('desktop-area').addEventListener('click', (e) => {
                 if (e.target.id === 'desktop-area' || e.target.id === 'wallpaper') {
                     document.querySelectorAll('.desktop-icon').forEach(el => el.classList.remove('selected'));
