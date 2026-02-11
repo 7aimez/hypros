@@ -1431,7 +1431,7 @@
                                 </div>
                             </div>
                         </div>
-                        <audio id="audio-${windowId}" crossorigin="anonymous"></audio>`;
+                        <audio id="audio-${windowId}" crossorigin="anonymous" preload="metadata"></audio>
                 
                 case 'calculator':
                     return `
@@ -1676,8 +1676,7 @@
             if (filename.endsWith('.js') || filename.endsWith('.py') || filename.endsWith('.html')) return 'fa-file-code text-blue-400';
             if (filename.endsWith('.json')) return 'fa-file-code text-yellow-400';
             if (filename.endsWith('.png') || filename.endsWith('.jpg') || filename.endsWith('.jpeg')) return 'fa-image text-purple-400';
-            if (filename.endsWith('.mp3') || filename.endsWith('.wav') || filename.endsWith('.ogg')) return 'fa-music text-pink-400';
-            return 'fa-file text-gray-400';
+            if (filename.endsWith('.mp3') || filename.endsWith('.wav') || filename.endsWith('.ogg') || filename.endsWith('.m4a') || filename.endsWith('.flac') || filename.endsWith('.aac')) return 'fa-music text-pink-400';Areturn 'fa-file text-gray-400';
         }
 
         function formatFileSize(content) {
@@ -1694,8 +1693,138 @@
                 win.path.push(name);
                 refreshFileWindow(windowId);
             } else {
-                openFileInEditor(windowId, name);
+                // Check if it's an audio file
+                const audioExtensions = ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.webm'];
+                const isAudio = audioExtensions.some(ext => name.toLowerCase().endsWith(ext));
+                
+                if (isAudio) {
+                    openAudioInMusicApp(windowId, name);
+                } else {
+                    openFileInEditor(windowId, name);
+                }
             }
+        }
+
+        function openAudioInMusicApp(fileWindowId, filename) {
+            const win = state.windows.find(w => w.id === fileWindowId);
+            const folder = getFolder(win.path);
+            const file = folder.children[filename];
+            
+            if (file && file.type === 'file') {
+                // Open music app
+                openApp('music');
+                
+                setTimeout(() => {
+                    const musicWin = state.windows.find(w => w.app.id === 'music');
+                    if (musicWin) {
+                        // Add to music files if not already there
+                        const existingIndex = state.musicFiles.findIndex(m => m.name === filename.replace(/\.[^/.]+$/, ""));
+                        let trackIndex;
+                        
+                        if (existingIndex === -1) {
+                            // Add new track
+                            state.musicFiles.push({
+                                name: filename.replace(/\.[^/.]+$/, ""),
+                                artist: "Unknown",
+                                url: file.content,
+                                file: { name: filename }
+                            });
+                            trackIndex = state.musicFiles.length - 1;
+                        } else {
+                            trackIndex = existingIndex;
+                        }
+                        
+                        // Update playlist and load track
+                        updatePlaylist(musicWin.id);
+                        loadTrack(trackIndex, musicWin.id);
+                        
+                        // Auto-play after user interaction (browser requirement)
+                        const audio = document.getElementById(`audio-${musicWin.id}`);
+                        if (audio) {
+                            audio.play().then(() => {
+                                updatePlayButton(musicWin.id, true);
+                                startVisualizer(musicWin.id);
+                            }).catch(e => {
+                                console.log('Auto-play prevented, user must click play');
+                                // Keep it loaded but not playing - user can click play
+                            });
+                        }
+                    }
+                }, 200);
+            }
+        }
+
+        function loadTrack(index, windowId) {
+            if (!audioPlayers[windowId]) {
+                audioPlayers[windowId] = { 
+                    audio: document.getElementById(`audio-${windowId}`) || new Audio(), 
+                    currentTrack: 0,
+                    isPlaying: false
+                };
+            }
+            
+            const player = audioPlayers[windowId];
+            
+            // Stop current playback
+            player.audio.pause();
+            player.audio.currentTime = 0;
+            
+            player.currentTrack = index;
+            const track = state.musicFiles[index];
+            
+            if (!track) return;
+            
+            // Set source
+            player.audio.src = track.url;
+            player.audio.load();
+            
+            // Update UI
+            document.getElementById(`track-title-${windowId}`).textContent = track.name;
+            document.getElementById(`track-artist-${windowId}`).textContent = track.artist || "Unknown";
+            
+            // Reset progress
+            document.getElementById(`progress-${windowId}`).style.width = '0%';
+            document.getElementById(`current-time-${windowId}`).textContent = '0:00';
+            document.getElementById(`duration-${windowId}`).textContent = '0:00';
+            
+            // Event listeners
+            player.audio.onloadedmetadata = () => {
+                document.getElementById(`duration-${windowId}`).textContent = formatTime(player.audio.duration);
+            };
+            
+            player.audio.ontimeupdate = () => {
+                if (player.audio.duration) {
+                    const progress = (player.audio.currentTime / player.audio.duration) * 100;
+                    document.getElementById(`progress-${windowId}`).style.width = progress + '%';
+                    document.getElementById(`current-time-${windowId}`).textContent = formatTime(player.audio.currentTime);
+                }
+            };
+            
+            player.audio.onended = () => {
+                updatePlayButton(windowId, false);
+                stopVisualizer(windowId);
+                nextTrack(windowId);
+            };
+            
+            player.audio.onerror = (e) => {
+                console.error('Audio error:', e);
+                showNotification('Music', 'Error playing track', 'fa-exclamation');
+                updatePlayButton(windowId, false);
+                stopVisualizer(windowId);
+            };
+            
+            // Update playlist highlighting
+            updatePlaylist(windowId);
+            
+            // Try to play (may be blocked by browser without user interaction)
+            player.audio.play().then(() => {
+                player.isPlaying = true;
+                updatePlayButton(windowId, true);
+                startVisualizer(windowId);
+            }).catch(e => {
+                player.isPlaying = false;
+                updatePlayButton(windowId, false);
+            });
         }
 
         function navigateTo(windowId, path) {
@@ -2134,18 +2263,36 @@ Memory: ${navigator.deviceMemory || '?'} GB`;
 
         function toggleMusic(windowId) {
             const player = audioPlayers[windowId];
-            if (!player || !player.audio.src) {
+            const audioEl = document.getElementById(`audio-${windowId}`);
+            
+            if (!player && !audioEl) {
                 showNotification('Music', 'No track loaded', 'fa-exclamation');
                 return;
             }
             
-            const btn = document.getElementById(`play-btn-${windowId}`);
-            if (player.audio.paused) {
-                player.audio.play();
-                updatePlayButton(windowId, true);
-                startVisualizer(windowId);
+            // Initialize player if needed
+            if (!player) {
+                audioPlayers[windowId] = {
+                    audio: audioEl,
+                    currentTrack: 0,
+                    isPlaying: false
+                };
+            }
+            
+            const audio = player ? player.audio : audioEl;
+            
+            if (audio.paused) {
+                audio.play().then(() => {
+                    if (player) player.isPlaying = true;
+                    updatePlayButton(windowId, true);
+                    startVisualizer(windowId);
+                }).catch(err => {
+                    console.error('Play error:', err);
+                    showNotification('Music', 'Click play to start', 'fa-info');
+                });
             } else {
-                player.audio.pause();
+                audio.pause();
+                if (player) player.isPlaying = false;
                 updatePlayButton(windowId, false);
                 stopVisualizer(windowId);
             }
