@@ -3207,6 +3207,17 @@ Memory: ${navigator.deviceMemory || '?'} GB`;
             }
         }
 
+        function saveCustomAppData(appId, data) {
+            const key = 'hypros_app_' + appId;
+            localStorage.setItem(key, JSON.stringify(data));
+        }
+        
+        function loadCustomAppData(appId, defaultValue) {
+            const key = 'hypros_app_' + appId;
+            const saved = localStorage.getItem(key);
+            return saved ? JSON.parse(saved) : defaultValue;
+        }
+
         // Global Events
         function setupGlobalEvents() {
             document.addEventListener('mousemove', (e) => {
