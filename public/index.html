@@ -272,6 +272,7 @@
         }
 
         .desktop-icon {
+            /* Change position: absolute to use CSS grid snapping */
             position: absolute;
             width: 80px;
             display: flex;
@@ -283,23 +284,26 @@
             padding: 8px;
             border-radius: 8px;
             z-index: 5;
+            /* Snap to 90px grid (80px width + 10px gap) */
+            --grid-size: 90px;
         }
-
+        
         .desktop-icon:hover {
             background: rgba(255, 255, 255, 0.1);
         }
-
+        
         .desktop-icon.selected {
             background: rgba(203, 166, 247, 0.3);
             border: 1px solid rgba(203, 166, 247, 0.5);
         }
-
+        
         .desktop-icon.dragging {
             opacity: 0.7;
             z-index: 1000;
             cursor: grabbing;
+            transition: none; /* Disable transition while dragging */
         }
-
+        
         .desktop-icon-name {
             font-size: 11px;
             text-align: center;
@@ -317,6 +321,45 @@
             font-family: 'JetBrains Mono', monospace;
             line-height: 1.5;
         }
+
+        /* Resize handle for windows */
+        .resize-handle {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 20px;
+            height: 20px;
+            cursor: se-resize;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        
+        .window-anim:hover .resize-handle {
+            opacity: 1;
+        }
+        
+        .resize-handle::after {
+            content: '';
+            width: 0;
+            height: 0;
+            border-style: solid;
+            border-width: 0 0 10px 10px;
+            border-color: transparent transparent rgba(203, 166, 247, 0.5) transparent;
+        }
+        
+        /* Edge resize areas */
+        .resize-n { cursor: n-resize; position: absolute; top: 0; left: 10px; right: 10px; height: 5px; }
+        .resize-s { cursor: s-resize; position: absolute; bottom: 0; left: 10px; right: 10px; height: 5px; }
+        .resize-e { cursor: e-resize; position: absolute; right: 0; top: 10px; bottom: 10px; width: 5px; }
+        .resize-w { cursor: w-resize; position: absolute; left: 0; top: 10px; bottom: 10px; width: 5px; }
+        .resize-ne { cursor: ne-resize; position: absolute; top: 0; right: 0; width: 10px; height: 10px; }
+        .resize-nw { cursor: nw-resize; position: absolute; top: 0; left: 0; width: 10px; height: 10px; }
+        .resize-se { cursor: se-resize; position: absolute; bottom: 0; right: 0; width: 10px; height: 10px; }
+        .resize-sw { cursor: sw-resize; position: absolute; bottom: 0; left: 0; width: 10px; height: 10px; }
     </style>
     <base target="_blank">
 </head>
@@ -855,8 +898,15 @@
             if (!draggedIconId) return;
             
             const icon = desktopIcons.find(i => i.id === draggedIconId);
-            icon.x = Math.max(0, Math.min(window.innerWidth - 100, e.clientX - iconDragOffset.x));
-            icon.y = Math.max(50, Math.min(window.innerHeight - 150, e.clientY - iconDragOffset.y));
+            const gridSize = 90; // Match the CSS variable
+            
+            // Calculate raw position
+            let rawX = Math.max(0, Math.min(window.innerWidth - 100, e.clientX - iconDragOffset.x));
+            let rawY = Math.max(50, Math.min(window.innerHeight - 150, e.clientY - iconDragOffset.y));
+            
+            // Snap to grid
+            icon.x = Math.round(rawX / gridSize) * gridSize;
+            icon.y = Math.round(rawY / gridSize) * gridSize;
             
             const el = document.getElementById(`desktop-icon-${draggedIconId}`);
             el.style.left = icon.x + 'px';
@@ -892,8 +942,13 @@
             
             const touch = e.touches[0];
             const icon = desktopIcons.find(i => i.id === draggedIconId);
-            icon.x = Math.max(0, Math.min(window.innerWidth - 100, touch.clientX - iconDragOffset.x));
-            icon.y = Math.max(50, Math.min(window.innerHeight - 150, touch.clientY - iconDragOffset.y));
+            const gridSize = 90;
+            
+            let rawX = Math.max(0, Math.min(window.innerWidth - 100, touch.clientX - iconDragOffset.x));
+            let rawY = Math.max(50, Math.min(window.innerHeight - 150, touch.clientY - iconDragOffset.y));
+            
+            icon.x = Math.round(rawX / gridSize) * gridSize;
+            icon.y = Math.round(rawY / gridSize) * gridSize;
             
             const el = document.getElementById(`desktop-icon-${draggedIconId}`);
             el.style.left = icon.x + 'px';
@@ -1227,24 +1282,33 @@
 
             let content = generateAppContent(appId, windowId, path, app);
 
-            windowEl.innerHTML = `
-                <div class="h-10 border-b border-white/10 flex items-center justify-between px-3 bg-white/5 rounded-t-xl touch-none" 
-                     onmousedown="startDrag(event, '${windowId}')" 
-                     ontouchstart="startDrag(event, '${windowId}')">
-                    <div class="flex items-center gap-2 pointer-events-none">
-                        <i class="fas ${app.icon} ${app.color} text-xs"></i>
-                        <span class="text-xs font-mono text-hypr-muted" id="title-${windowId}">${app.name}</span>
+                windowEl.innerHTML = `
+                    <div class="h-10 border-b border-white/10 flex items-center justify-between px-3 bg-white/5 rounded-t-xl touch-none" 
+                         onmousedown="startDrag(event, '${windowId}')" 
+                         ontouchstart="startDrag(event, '${windowId}')">
+                        <div class="flex items-center gap-2 pointer-events-none">
+                            <i class="fas ${app.icon} ${app.color} text-xs"></i>
+                            <span class="text-xs font-mono text-hypr-muted" id="title-${windowId}">${app.name}</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="minimizeWindow('${windowId}')" class="w-3 h-3 rounded-full bg-yellow-500/80 hover:bg-yellow-400 transition-colors"></button>
+                            <button onclick="maximizeWindow('${windowId}')" class="w-3 h-3 rounded-full bg-green-500/80 hover:bg-green-400 transition-colors"></button>
+                            <button onclick="closeWindow('${windowId}')" class="w-3 h-3 rounded-full bg-red-500/80 hover:bg-red-400 transition-colors"></button>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <button onclick="minimizeWindow('${windowId}')" class="w-3 h-3 rounded-full bg-yellow-500/80 hover:bg-yellow-400 transition-colors"></button>
-                        <button onclick="maximizeWindow('${windowId}')" class="w-3 h-3 rounded-full bg-green-500/80 hover:bg-green-400 transition-colors"></button>
-                        <button onclick="closeWindow('${windowId}')" class="w-3 h-3 rounded-full bg-red-500/80 hover:bg-red-400 transition-colors"></button>
+                    <div class="flex-1 overflow-hidden rounded-b-xl relative" id="content-${windowId}">
+                        ${content}
                     </div>
-                </div>
-                <div class="flex-1 overflow-hidden rounded-b-xl relative" id="content-${windowId}">
-                    ${content}
-                </div>
-            `;
+                    <!-- Resize handles -->
+                    <div class="resize-n" onmousedown="startResize(event, '${windowId}', 'n')" ontouchstart="startResize(event, '${windowId}', 'n')"></div>
+                    <div class="resize-s" onmousedown="startResize(event, '${windowId}', 's')" ontouchstart="startResize(event, '${windowId}', 's')"></div>
+                    <div class="resize-e" onmousedown="startResize(event, '${windowId}', 'e')" ontouchstart="startResize(event, '${windowId}', 'e')"></div>
+                    <div class="resize-w" onmousedown="startResize(event, '${windowId}', 'w')" ontouchstart="startResize(event, '${windowId}', 'w')"></div>
+                    <div class="resize-ne" onmousedown="startResize(event, '${windowId}', 'ne')" ontouchstart="startResize(event, '${windowId}', 'ne')"></div>
+                    <div class="resize-nw" onmousedown="startResize(event, '${windowId}', 'nw')" ontouchstart="startResize(event, '${windowId}', 'nw')"></div>
+                    <div class="resize-se" onmousedown="startResize(event, '${windowId}', 'se')" ontouchstart="startResize(event, '${windowId}', 'se')"></div>
+                    <div class="resize-sw" onmousedown="startResize(event, '${windowId}', 'sw')" ontouchstart="startResize(event, '${windowId}', 'sw')"></div>
+                `;
 
             els.windowsContainer.appendChild(windowEl);
             state.windows.push({ id: windowId, element: windowEl, app, path });
@@ -1497,6 +1561,7 @@
                                     </button>
                                 </div>
                             </div>
+                            </div>
                             <div class="flex-1 overflow-auto p-4 space-y-4">
                                 <div class="grid grid-cols-2 gap-4">
                                     <div>
@@ -1536,6 +1601,12 @@
                                     <textarea id="ca-js" class="flex-1 bg-hypr-surface border border-hypr-border rounded-lg px-3 py-2 text-sm focus:border-hypr-accent outline-none font-mono text-xs" placeholder="// Your JS here"></textarea>
                                 </div>
                             </div>
+                            <div class="mt-4 pt-4 border-t border-white/10">
+                                <div class="text-xs font-bold text-hypr-muted uppercase mb-2">Saved Apps</div>
+                                <div class="space-y-2" id="saved-apps-list-${windowId}">
+                                    ${renderSavedApps(windowId)}
+                                </div>
+                            </div>
                         </div>`;
                 
                 default:
@@ -1548,14 +1619,44 @@
 
         // Custom App Functions
         function initCustomApp(windowId, customIndex) {
-            const app = customApps[customIndex];
+            // For test apps, find by checking if index is out of bounds of saved apps
+            // or if the app data was passed differently
+            let app;
+            
+            // Check if this is a test window (customIndex might be invalid after pop)
+            const win = state.windows.find(w => w.id === windowId);
+            if (!win) return;
+            
+            // Try to get app data from the window's stored reference or find in customApps
+            if (win.customAppData) {
+                app = win.customAppData;
+            } else if (customIndex >= 0 && customIndex < customApps.length) {
+                app = customApps[customIndex];
+                win.customAppData = app; // Store reference for later
+            } else {
+                // Test app case - data might have been lost, reconstruct from form
+                const html = document.getElementById('ca-html')?.value || '';
+                const css = document.getElementById('ca-css')?.value || '';
+                const js = document.getElementById('ca-js')?.value || '';
+                app = { html, css, js };
+                win.customAppData = app;
+            }
+            
             if (!app) return;
             
             const container = document.getElementById(`custom-app-${windowId}`);
             if (!container) return;
             
+            // Clear existing content
+            container.innerHTML = '';
+            
             // Create shadow DOM to isolate styles
-            const shadow = container.attachShadow({ mode: 'open' });
+            let shadow = container.shadowRoot;
+            if (!shadow) {
+                shadow = container.attachShadow({ mode: 'open' });
+            } else {
+                shadow.innerHTML = ''; // Clear existing
+            }
             
             // Add CSS
             if (app.css) {
@@ -1575,11 +1676,58 @@
             if (app.js) {
                 const script = document.createElement('script');
                 script.textContent = `
-                    (function() {
-                        ${app.js}
-                    })();
+                    (function(windowRef) {
+                        try {
+                            ${app.js}
+                        } catch(e) {
+                            console.error('Custom app error:', e);
+                        }
+                    })(window);
                 `;
                 shadow.appendChild(script);
+            }
+        }
+
+        function renderSavedApps(windowId) {
+            if (customApps.length === 0) {
+                return '<div class="text-xs text-hypr-muted">No saved apps</div>';
+            }
+            
+            return customApps.map((app, idx) => `
+                <div class="flex items-center justify-between p-2 rounded-lg bg-hypr-surface/30">
+                    <div class="flex items-center gap-2">
+                        <i class="fas ${app.icon} ${app.color}"></i>
+                        <span class="text-sm">${app.name}</span>
+                    </div>
+                    <div class="flex gap-1">
+                        <button onclick="openApp('custom_${idx}')" class="text-xs bg-hypr-accent/20 text-hypr-accent px-2 py-1 rounded hover:bg-hypr-accent/30">
+                            <i class="fas fa-play"></i>
+                        </button>
+                        <button onclick="addAppToTaskbar(${idx}); refreshAppCreator('${windowId}')" class="text-xs bg-hypr-success/20 text-hypr-success px-2 py-1 rounded hover:bg-hypr-success/30" title="Add to Desktop">
+                            <i class="fas fa-desktop"></i>
+                        </button>
+                        <button onclick="deleteCustomApp(${idx}); refreshAppCreator('${windowId}')" class="text-xs bg-hypr-error/20 text-hypr-error px-2 py-1 rounded hover:bg-hypr-error/30">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function refreshAppCreator(windowId) {
+            const container = document.getElementById(`saved-apps-list-${windowId}`);
+            if (container) {
+                container.innerHTML = renderSavedApps(windowId);
+            }
+        }
+        
+        function deleteCustomApp(index) {
+            if (confirm('Delete this app?')) {
+                customApps.splice(index, 1);
+                updateAppsList();
+                renderApps();
+                saveState();
+                showNotification('App Creator', 'App deleted', 'fa-trash');
             }
         }
 
@@ -1608,19 +1756,30 @@
             const css = document.getElementById('ca-css').value;
             const js = document.getElementById('ca-js').value;
             
+            // Create a temporary test app object
             const testApp = {
                 name: 'Test App',
                 icon: 'fa-flask',
                 color: 'text-yellow-400',
-                html, css, js
+                html, 
+                css, 
+                js
             };
             
+            // Add to customApps temporarily
             const tempIdx = customApps.length;
             customApps.push(testApp);
+            
+            // Update apps list and open
             updateAppsList();
             openApp(`custom_${tempIdx}`);
-            customApps.pop(); // Remove test app from list
-            updateAppsList();
+            
+            // Remove from list after opening (window will keep reference)
+            // Don't remove immediately - wait a bit
+            setTimeout(() => {
+                customApps.pop();
+                updateAppsList();
+            }, 100);
         }
 
         // Task Manager Functions
@@ -2600,6 +2759,116 @@ Memory: ${navigator.deviceMemory || '?'} GB`;
             }
         }
 
+        let resizeState = { windowId: null, direction: null, startX: 0, startY: 0, startWidth: 0, startHeight: 0, startLeft: 0, startTop: 0 };
+        
+        function startResize(e, windowId, direction) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const win = state.windows.find(w => w.id === windowId);
+            const rect = win.element.getBoundingClientRect();
+            
+            const isTouch = e.type === 'touchstart';
+            const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+            const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+            
+            resizeState = {
+                windowId,
+                direction,
+                startX: clientX,
+                startY: clientY,
+                startWidth: rect.width,
+                startHeight: rect.height,
+                startLeft: rect.left,
+                startTop: rect.top,
+                isTouch
+            };
+            
+            document.body.style.cursor = getComputedStyle(e.target).cursor;
+        }
+        
+        function handleResizeMove(e) {
+            if (!resizeState.windowId) return;
+            
+            const isTouch = e.type === 'touchmove';
+            if (isTouch) e.preventDefault();
+            
+            const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+            const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+            
+            const win = state.windows.find(w => w.id === resizeState.windowId);
+            const dx = clientX - resizeState.startX;
+            const dy = clientY - resizeState.startY;
+            
+            let newWidth = resizeState.startWidth;
+            let newHeight = resizeState.startHeight;
+            let newLeft = resizeState.startLeft;
+            let newTop = resizeState.startTop;
+            
+            // Minimum sizes
+            const minWidth = 300;
+            const minHeight = 200;
+            
+            switch(resizeState.direction) {
+                case 'e':
+                    newWidth = Math.max(minWidth, resizeState.startWidth + dx);
+                    break;
+                case 'w':
+                    newWidth = Math.max(minWidth, resizeState.startWidth - dx);
+                    newLeft = resizeState.startLeft + (resizeState.startWidth - newWidth);
+                    break;
+                case 's':
+                    newHeight = Math.max(minHeight, resizeState.startHeight + dy);
+                    break;
+                case 'n':
+                    newHeight = Math.max(minHeight, resizeState.startHeight - dy);
+                    newTop = resizeState.startTop + (resizeState.startHeight - newHeight);
+                    break;
+                case 'se':
+                    newWidth = Math.max(minWidth, resizeState.startWidth + dx);
+                    newHeight = Math.max(minHeight, resizeState.startHeight + dy);
+                    break;
+                case 'sw':
+                    newWidth = Math.max(minWidth, resizeState.startWidth - dx);
+                    newLeft = resizeState.startLeft + (resizeState.startWidth - newWidth);
+                    newHeight = Math.max(minHeight, resizeState.startHeight + dy);
+                    break;
+                case 'ne':
+                    newWidth = Math.max(minWidth, resizeState.startWidth + dx);
+                    newHeight = Math.max(minHeight, resizeState.startHeight - dy);
+                    newTop = resizeState.startTop + (resizeState.startHeight - newHeight);
+                    break;
+                case 'nw':
+                    newWidth = Math.max(minWidth, resizeState.startWidth - dx);
+                    newLeft = resizeState.startLeft + (resizeState.startWidth - newWidth);
+                    newHeight = Math.max(minHeight, resizeState.startHeight - dy);
+                    newTop = resizeState.startTop + (resizeState.startHeight - newHeight);
+                    break;
+            }
+            
+            win.element.style.width = newWidth + 'px';
+            win.element.style.height = newHeight + 'px';
+            win.element.style.left = newLeft + 'px';
+            win.element.style.top = newTop + 'px';
+            
+            // Update canvas if paint app
+            const canvas = document.getElementById(`canvas-${resizeState.windowId}`);
+            if (canvas) {
+                const ctx = canvas.getContext('2d');
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                canvas.width = newWidth;
+                canvas.height = newHeight - 48; // Subtract header height
+                ctx.putImageData(imageData, 0, 0);
+            }
+        }
+        
+        function handleResizeEnd(e) {
+            if (resizeState.windowId) {
+                resizeState.windowId = null;
+                document.body.style.cursor = '';
+            }
+        }
+
         // System Info
         function updateSystemInfo() {
             if ('getBattery' in navigator) {
@@ -2823,8 +3092,83 @@ Memory: ${navigator.deviceMemory || '?'} GB`;
             setTimeout(() => toast.remove(), 5000);
         }
 
+        function addAppToTaskbar(appIndex) {
+            const app = customApps[appIndex];
+            if (!app) return;
+            
+            // Create desktop icon for the app
+            const gridSize = 90;
+            const iconsPerRow = Math.floor((window.innerWidth - 40) / gridSize);
+            
+            // Find empty grid position
+            let x = 20, y = 20;
+            let found = false;
+            
+            while (!found && y < window.innerHeight - 200) {
+                x = 20;
+                while (!found && x < window.innerWidth - 100) {
+                    const occupied = desktopIcons.some(icon => 
+                        Math.abs(icon.x - x) < gridSize/2 && Math.abs(icon.y - y) < gridSize/2
+                    );
+                    if (!occupied) {
+                        found = true;
+                        break;
+                    }
+                    x += gridSize;
+                }
+                if (!found) y += gridSize;
+            }
+            
+            const iconId = 'customapp_' + Date.now();
+            desktopIcons.push({
+                id: iconId,
+                name: app.name,
+                icon: app.icon,
+                color: app.color,
+                x: x,
+                y: y,
+                isCustomApp: true,
+                appIndex: appIndex
+            });
+            
+            renderDesktopIcons();
+            saveState();
+            showNotification('App Creator', `Added ${app.name} to desktop`, 'fa-plus');
+        }
+        
+        // Update handleIconDoubleClick to handle custom apps
+        function handleIconDoubleClick(e, iconId) {
+            e.stopPropagation();
+            const icon = desktopIcons.find(i => i.id === iconId);
+            
+            if (icon.isTrash) {
+                openApp('trash');
+            } else if (icon.isCustomApp) {
+                openApp(`custom_${icon.appIndex}`);
+            } else if (icon.path) {
+                openApp('files', icon.path);
+            }
+        }
+
         // Global Events
         function setupGlobalEvents() {
+            document.addEventListener('mousemove', (e) => {
+                handleDragMove(e);
+                handleResizeMove(e);
+            });
+            document.addEventListener('mouseup', (e) => {
+                handleDragEnd(e);
+                handleResizeEnd(e);
+            });
+            document.addEventListener('touchmove', (e) => {
+                handleDragMove(e);
+                handleResizeMove(e);
+            }, { passive: false });
+            document.addEventListener('touchend', (e) => {
+                handleDragEnd(e);
+                handleResizeEnd(e);
+            });
+            
             document.addEventListener('mousemove', handleDragMove);
             document.addEventListener('mouseup', handleDragEnd);
             document.addEventListener('touchmove', handleDragMove, { passive: false });
