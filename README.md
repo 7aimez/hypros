@@ -1,5 +1,5 @@
 <div align="center">
-  <img width="200px" height="200px" width="200px" alt="hypros-logo" src="https://github.com/user-attachments/assets/5e433b4e-58af-4097-a5b2-a5c5fbb948e3" />
+  <a href="#"><img width="200px" height="200px" width="200px" alt="hypros-logo" src="https://github.com/user-attachments/assets/5e433b4e-58af-4097-a5b2-a5c5fbb948e3" /></a>
   <h1>HyprOS</h1>
   <b>HTML recreation of hyprland shell</b>
 </div>
