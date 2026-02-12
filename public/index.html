@@ -811,27 +811,17 @@
                     e.preventDefault();
                     const query = els.globalSearch.value.trim();
                     if (!query) return;
-                    
+                    let url;
                     if (query.includes('.') && !query.includes(' ')) {
-                        let url = query;
+                        url = query;
                         if (!url.startsWith('http')) {
                             url = 'https://' + url;
                         }
-                        openApp('browser');
-                        setTimeout(() => {
-                            const browserWin = state.windows.find(w => w.app.id === 'browser');
-                            if (browserWin) {
-                                const urlInput = document.getElementById(`url-${browserWin.id}`);
-                                const iframe = document.getElementById(`iframe-${browserWin.id}`);
-                                if (urlInput && iframe) {
-                                    urlInput.value = url;
-                                    iframe.src = url;
-                                }
-                            }
-                        }, 100);
                     } else {
-                        searchWeb();
+                        let search = encodeURIComponent(query);
+                        url = 'https://google.com/search?q=' + search;
                     }
+                    location.href = url;
                     els.globalSearch.value = '';
                 }
             });
@@ -874,8 +864,8 @@
                 state.musicFiles = Object.entries(musicFolder.children).map(([name, item]) => ({
                     name: name.replace(/\.[^/.]+$/, ""),
                     artist: "Unknown",
-                    url: item.content,
-                    file: { name: name }
+                    url: item.content, // This should be the base64 data URL
+                    filename: name
                 }));
             }
         }
@@ -1042,18 +1032,30 @@
             }
         }
 
-        function showIconContextMenu(e, iconId) {
-            e.preventDefault();
-            e.stopPropagation();
+        // Add this new function
+            function removeDesktopIcon(iconId) {
+                const index = desktopIcons.findIndex(i => i.id === iconId);
+                if (index > -1) {
+                    desktopIcons.splice(index, 1);
+                    renderDesktopIcons();
+                    saveState();
+                    showNotification('Desktop', 'Icon removed', 'fa-trash');
+                }
+            }
             
-            const icon = desktopIcons.find(i => i.id === iconId);
-            
-            showContextMenu(e.clientX, e.clientY, [
-                { label: 'Open', icon: 'fa-folder-open', action: () => handleIconDoubleClick(e, iconId) },
-                { label: icon.isTrash ? 'Empty Trash' : 'Rename', icon: 'fa-edit', action: () => renameDesktopIcon(iconId) },
-                !icon.isTrash && { label: 'Delete', icon: 'fa-trash', action: () => deleteDesktopIcon(iconId) }
-            ].filter(Boolean));
-        }
+            // Update showIconContextMenu function - replace the existing one with this:
+            function showIconContextMenu(e, iconId) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const icon = desktopIcons.find(i => i.id === iconId);
+                
+                showContextMenu(e.clientX, e.clientY, [
+                    { label: 'Open', icon: 'fa-folder-open', action: () => handleIconDoubleClick(e, iconId) },
+                    { label: icon.isTrash ? 'Empty Trash' : 'Rename', icon: 'fa-edit', action: () => renameDesktopIcon(iconId) },
+                    !icon.isTrash && { label: 'Remove from Desktop', icon: 'fa-times', action: () => removeDesktopIcon(iconId) }
+                ].filter(Boolean));
+            }
 
         function renameDesktopIcon(iconId) {
             const icon = desktopIcons.find(i => i.id === iconId);
@@ -1665,10 +1667,11 @@
                                 </div>
                             </div>
                         </div>`;
-                
+                    
                 default:
                     if (app && app.isCustom) {
-                        return `<div id="custom-app-${windowId}" class="h-full w-full overflow-auto bg-hypr-bg/50"></div>`;
+                        // Ensure the container has a unique and findable ID
+                        return `<div id="custom-app-${windowId}" class="h-full w-full overflow-auto bg-hypr-bg/50" data-custom-index="${app.customIndex}"></div>`;
                     }
                     return `<div class="p-8 text-center"><i class="fas fa-cube text-6xl text-hypr-muted mb-4"></i><p>Application "${appId}"</p></div>`;
             }
@@ -1676,70 +1679,80 @@
 
         // Custom App Functions
         function initCustomApp(windowId, customIndex) {
-            // For test apps, find by checking if index is out of bounds of saved apps
-            // or if the app data was passed differently
-            let app;
-            
-            // Check if this is a test window (customIndex might be invalid after pop)
+            // Find the window
             const win = state.windows.find(w => w.id === windowId);
             if (!win) return;
             
-            // Try to get app data from the window's stored reference or find in customApps
-            if (win.customAppData) {
-                app = win.customAppData;
-            } else if (customIndex >= 0 && customIndex < customApps.length) {
+            // Get app data - check multiple sources
+            let app = win.customAppData;
+            
+            // If no stored data, try to find in customApps array
+            if (!app && customIndex >= 0 && customIndex < customApps.length) {
                 app = customApps[customIndex];
-                win.customAppData = app; // Store reference for later
-            } else {
-                // Test app case - data might have been lost, reconstruct from form
-                const html = document.getElementById('ca-html')?.value || '';
-                const css = document.getElementById('ca-css')?.value || '';
-                const js = document.getElementById('ca-js')?.value || '';
-                app = { html, css, js };
                 win.customAppData = app;
             }
             
-            if (!app) return;
+            // If still no app data, we can't proceed
+            if (!app) {
+                console.error('No app data found for window', windowId);
+                return;
+            }
             
-            const container = document.getElementById(`custom-app-${windowId}`);
-            if (!container) return;
+            // Find the container - try multiple selectors
+            let container = document.getElementById(`custom-app-${windowId}`);
             
-            // Clear existing content
+            // If not found by ID, try finding by class or querying the window content
+            if (!container) {
+                const winEl = document.getElementById(windowId);
+                if (winEl) {
+                    container = winEl.querySelector('[id^="custom-app-"]');
+                }
+            }
+            
+            if (!container) {
+                console.error('Container not found for window', windowId);
+                return;
+            }
+            
+            // Clear and setup shadow DOM
             container.innerHTML = '';
             
-            // Create shadow DOM to isolate styles
             let shadow = container.shadowRoot;
             if (!shadow) {
                 shadow = container.attachShadow({ mode: 'open' });
-            } else {
-                shadow.innerHTML = ''; // Clear existing
             }
             
-            // Add CSS
+            // Create wrapper div
+            const wrapper = document.createElement('div');
+            wrapper.id = 'app-content';
+            
+            // Add CSS first
             if (app.css) {
                 const style = document.createElement('style');
                 style.textContent = app.css;
                 shadow.appendChild(style);
             }
             
-            // Add HTML
+            // Add HTML content
             if (app.html) {
-                const wrapper = document.createElement('div');
                 wrapper.innerHTML = app.html;
                 shadow.appendChild(wrapper);
             }
             
-            // Add JS
+            // Add JS in a way that can access the shadow DOM
             if (app.js) {
                 const script = document.createElement('script');
+                // Create a safe execution context with access to shadow root
                 script.textContent = `
-                    (function(windowRef) {
+                    (function() {
+                        const shadowRoot = document.getElementById('${windowId}').querySelector('[id^="custom-app-"]').shadowRoot;
+                        const container = shadowRoot.getElementById('app-content');
                         try {
                             ${app.js}
                         } catch(e) {
                             console.error('Custom app error:', e);
                         }
-                    })(window);
+                    })();
                 `;
                 shadow.appendChild(script);
             }
@@ -1974,46 +1987,58 @@
         function loadTrack(index, windowId) {
             if (!audioPlayers[windowId]) {
                 audioPlayers[windowId] = { 
-                    audio: document.getElementById(`audio-${windowId}`) || new Audio(), 
+                    audio: document.getElementById(`audio-${windowId}`), 
                     currentTrack: 0,
                     isPlaying: false
                 };
             }
             
             const player = audioPlayers[windowId];
-            
-            // Stop current playback
-            player.audio.pause();
-            player.audio.currentTime = 0;
-            
-            player.currentTrack = index;
             const track = state.musicFiles[index];
             
-            if (!track) return;
+            if (!track || !track.url) {
+                showNotification('Music', 'Track not found', 'fa-exclamation');
+                return;
+            }
             
-            // Set source
+            // Stop current playback
+            if (player.audio) {
+                player.audio.pause();
+                player.audio.currentTime = 0;
+            }
+            
+            player.currentTrack = index;
+            
+            // Set source - ensure it's a valid data URL or URL
             player.audio.src = track.url;
             player.audio.load();
             
             // Update UI
-            document.getElementById(`track-title-${windowId}`).textContent = track.name;
-            document.getElementById(`track-artist-${windowId}`).textContent = track.artist || "Unknown";
+            const titleEl = document.getElementById(`track-title-${windowId}`);
+            const artistEl = document.getElementById(`track-artist-${windowId}`);
+            
+            if (titleEl) titleEl.textContent = track.name;
+            if (artistEl) artistEl.textContent = track.artist || "Unknown";
             
             // Reset progress
-            document.getElementById(`progress-${windowId}`).style.width = '0%';
-            document.getElementById(`current-time-${windowId}`).textContent = '0:00';
-            document.getElementById(`duration-${windowId}`).textContent = '0:00';
+            const progressEl = document.getElementById(`progress-${windowId}`);
+            const currentTimeEl = document.getElementById(`current-time-${windowId}`);
+            const durationEl = document.getElementById(`duration-${windowId}`);
+            
+            if (progressEl) progressEl.style.width = '0%';
+            if (currentTimeEl) currentTimeEl.textContent = '0:00';
+            if (durationEl) durationEl.textContent = '0:00';
             
             // Event listeners
             player.audio.onloadedmetadata = () => {
-                document.getElementById(`duration-${windowId}`).textContent = formatTime(player.audio.duration);
+                if (durationEl) durationEl.textContent = formatTime(player.audio.duration);
             };
             
             player.audio.ontimeupdate = () => {
-                if (player.audio.duration) {
+                if (player.audio.duration && progressEl) {
                     const progress = (player.audio.currentTime / player.audio.duration) * 100;
-                    document.getElementById(`progress-${windowId}`).style.width = progress + '%';
-                    document.getElementById(`current-time-${windowId}`).textContent = formatTime(player.audio.currentTime);
+                    progressEl.style.width = progress + '%';
+                    if (currentTimeEl) currentTimeEl.textContent = formatTime(player.audio.currentTime);
                 }
             };
             
@@ -2033,15 +2058,8 @@
             // Update playlist highlighting
             updatePlaylist(windowId);
             
-            // Try to play (may be blocked by browser without user interaction)
-            player.audio.play().then(() => {
-                player.isPlaying = true;
-                updatePlayButton(windowId, true);
-                startVisualizer(windowId);
-            }).catch(e => {
-                player.isPlaying = false;
-                updatePlayButton(windowId, false);
-            });
+            // Don't auto-play - let user click play (browser policy)
+            updatePlayButton(windowId, false);
         }
 
         function navigateTo(windowId, path) {
@@ -2411,28 +2429,50 @@ Memory: ${navigator.deviceMemory || '?'} GB`;
 
         function handleMusicUpload(input, windowId) {
             const files = Array.from(input.files);
+            
+            if (files.length === 0) return;
+            
+            let processed = 0;
+            
             files.forEach(file => {
+                // Only process audio files
+                if (!file.type.startsWith('audio/')) {
+                    processed++;
+                    return;
+                }
+                
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     const base64data = e.target.result;
                     const filename = file.name;
                     
-                    // Save to file system
+                    // Save to file system in Music folder
                     createFile(['Home', 'Music'], filename, base64data);
                     
-                    // Add to music files
-                    state.musicFiles.push({
+                    // Add to music files state immediately
+                    const trackData = {
                         name: file.name.replace(/\.[^/.]+$/, ""),
                         artist: "Unknown",
                         url: base64data,
-                        file: file
-                    });
+                        filename: filename
+                    };
                     
-                    updatePlaylist(windowId);
+                    state.musicFiles.push(trackData);
+                    
+                    processed++;
+                    
+                    // Update UI when all files processed
+                    if (processed === files.length) {
+                        updatePlaylist(windowId);
+                        showNotification('Music', `Added ${files.length} track(s)`, 'fa-music');
+                    }
+                };
+                reader.onerror = () => {
+                    processed++;
+                    console.error('Error reading file:', file.name);
                 };
                 reader.readAsDataURL(file);
             });
-            showNotification('Music', `Added ${files.length} tracks`, 'fa-music');
         }
 
         function updatePlaylist(windowId) {
